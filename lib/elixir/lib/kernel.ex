@@ -1558,12 +1558,12 @@ defmodule Kernel do
   @spec inspect(Inspect.t, Keyword.t) :: String.t
   def inspect(arg, opts \\ []) when is_list(opts) do
     opts  = struct(Inspect.Opts, opts)
-    limit = case opts.pretty do
-      true  -> opts.width
-      false -> :infinity
+    {width, mode} = case opts.pretty do
+      true ->  {opts.width, opts.mode}
+      false -> {:infinity, :compact}
     end
     IO.iodata_to_binary(
-      Inspect.Algebra.format(Inspect.Algebra.to_doc(arg, opts), limit)
+      Inspect.Algebra.format(Inspect.Algebra.to_doc(arg, opts), width, mode)
     )
   end
 

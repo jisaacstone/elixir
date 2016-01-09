@@ -29,6 +29,9 @@ defmodule Inspect.Opts do
 
     * `:pretty` - if set to `true` enables pretty printing, defaults to `false`.
 
+    * `:mode` - pretty printing rendering mode. Either `:expand` or `:compact`
+      defaults to `:compact`
+
     * `:width` - defaults to the 80 characters, used when pretty is `true` or
       when printing to IO devices.
 
@@ -49,6 +52,7 @@ defmodule Inspect.Opts do
             width: 80,
             base: :decimal,
             pretty: false,
+            mode: :compact,
             safe: true
 
   @type t :: %__MODULE__{
@@ -59,6 +63,7 @@ defmodule Inspect.Opts do
                width: pos_integer | :infinity,
                base: :decimal | :binary | :hex | :octal,
                pretty: boolean,
+               mode: :compact | :expand,
                safe: boolean}
 end
 
@@ -123,12 +128,12 @@ defmodule Inspect.Algebra do
   are encoded explictly as `:flat` or `:break`. Those groups are then reduced
   to a simple document, where the layout is already decided, per [Lindig][0].
 
-  This implementation slightly changes the semantic of Lindig's algorithm
-  to allow elements that belong to the same group to be printed together
-  in the same line, even if they do not fit the line fully. This was achieved
-  by changing `:break` to mean a possible break and `:flat` to force a flat
-  structure. Then deciding if a break works as a newline is just a matter
-  of checking if we have enough space until the next break that is not
+  This implementation slightly changes the semantic of Lindig's algorithm.
+  `:flat` still forces a flat structure, but `:break` has been split into two
+  modes: `:compact` and `:expand`. `:compact` allows elements that belong to
+  the same group to be printed together in the same line, even if they do not
+  fit the line fully. Then deciding if a break works as a newline is just a
+  matter of checking if we have enough space until the next break that is not
   inside a group (which is still flat).
 
   Custom pretty printers can be implemented using the documents returned
@@ -510,6 +515,9 @@ defmodule Inspect.Algebra do
   defp decrement(:infinity), do: :infinity
   defp decrement(counter),   do: counter - 1
 
+  @type width :: non_neg_integer | :infinity
+  @type mode :: :flat | :compact | :expand
+
   @doc """
   The formatting function.
 
@@ -517,16 +525,18 @@ defmodule Inspect.Algebra do
   and returns an IO data representation of the best layout for the
   document to fit in the given width.
   """
-  @spec format(t, non_neg_integer | :infinity) :: iodata
+  @spec format(t, width) :: iodata
   def format(d, w) do
-    format(w, 0, [{0, default_mode(w), doc_group(d)}])
+    format(d, w, default_mode(w))
+  end
+  @spec format(t, width, mode) :: iodata
+  def format(d, w, m) do
+    do_fmt(w, 0, [{0, m, doc_group(d)}])
   end
 
+  @spec default_mode(width) :: mode
   defp default_mode(:infinity), do: :flat
-  defp default_mode(_),         do: :break
-
-  # Record representing the document mode to be rendered: flat or broken
-  @typep mode :: :flat | :break
+  defp default_mode(_),         do: :compact
 
   @spec fits?(integer, [{integer, mode, t}]) :: boolean
   defp fits?(w, _) when w < 0,                      do: false
@@ -538,24 +548,25 @@ defmodule Inspect.Algebra do
   defp fits?(w, [{i, _, doc_group(x)} | t]),        do: fits?(w, [{i, :flat, x} | t])
   defp fits?(w, [{_, _, s} | t]) when is_binary(s), do: fits?((w - byte_size s), t)
   defp fits?(w, [{_, :flat, doc_break(s)} | t]),    do: fits?((w - byte_size s), t)
-  defp fits?(_, [{_, :break, doc_break(_)} | _]),   do: true
+  defp fits?(_, [{_, :compact, doc_break(_)} | _]), do: true
 
-  @spec format(integer | :infinity, integer, [{integer, mode, t}]) :: [binary]
-  defp format(_, _, []),                                do: []
-  defp format(w, _, [{i, _, :doc_line} | t]),           do: [indent(i) | format(w, i, t)]
-  defp format(w, k, [{_, _, :doc_nil} | t]),            do: format(w, k, t)
-  defp format(w, k, [{i, m, doc_cons(x, y)} | t]),      do: format(w, k, [{i, m, x} | [{i, m, y} | t]])
-  defp format(w, k, [{i, m, doc_nest(x, j)} | t]),      do: format(w, k, [{i + j, m, x} | t])
-  defp format(w, k, [{i, m, doc_group(x)} | t]),        do: format(w, k, [{i, m, x} | t])
-  defp format(w, k, [{_, _, s} | t]) when is_binary(s), do: [s | format(w, (k + byte_size s), t)]
-  defp format(w, k, [{_, :flat, doc_break(s)} | t]),    do: [s | format(w, (k + byte_size s), t)]
-  defp format(w, k, [{i, :break, doc_break(s)} | t]) do
+  @spec do_fmt(width, integer, [{integer, mode, t}]) :: [binary]
+  defp do_fmt(_, _, []),                                do: []
+  defp do_fmt(w, _, [{i, _, :doc_line} | t]),           do: [indent(i) | do_fmt(w, i, t)]
+  defp do_fmt(w, k, [{_, _, :doc_nil} | t]),            do: do_fmt(w, k, t)
+  defp do_fmt(w, k, [{i, m, doc_cons(x, y)} | t]),      do: do_fmt(w, k, [{i, m, x} | [{i, m, y} | t]])
+  defp do_fmt(w, k, [{i, m, doc_nest(x, j)} | t]),      do: do_fmt(w, k, [{i + j, m, x} | t])
+  defp do_fmt(w, k, [{i, m, doc_group(x)} | t]),        do: do_fmt(w, k, [{i, m, x} | t])
+  defp do_fmt(w, k, [{_, _, s} | t]) when is_binary(s), do: [s | do_fmt(w, (k + byte_size s), t)]
+  defp do_fmt(w, k, [{_, :flat, doc_break(s)} | t]),    do: [s | do_fmt(w, (k + byte_size s), t)]
+  defp do_fmt(w, k, [{i, :expand, doc_break(s)} | t]),  do: [indent(i) | do_fmt(w, i, t)]
+  defp do_fmt(w, k, [{i, :compact, doc_break(s)} | t]) do
     k = k + byte_size(s)
 
     if w == :infinity or fits?(w - k, t) do
-      [s | format(w, k, t)]
+      [s | do_fmt(w, k, t)]
     else
-      [indent(i) | format(w, i, t)]
+      [indent(i) | do_fmt(w, i, t)]
     end
   end
 

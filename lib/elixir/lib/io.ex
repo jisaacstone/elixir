@@ -208,7 +208,10 @@ defmodule IO do
   @spec inspect(device, item, Keyword.t) :: item when item: var
   def inspect(device, item, opts) when is_list(opts) do
     opts   = struct(Inspect.Opts, opts)
-    iodata = Inspect.Algebra.format(Inspect.Algebra.to_doc(item, opts), opts.width)
+    iodata = Inspect.Algebra.format(
+      Inspect.Algebra.to_doc(item, opts),
+      opts.width,
+      opts.mode)
     puts device, iodata
     item
   end

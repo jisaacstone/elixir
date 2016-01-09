@@ -159,6 +159,7 @@ defmodule Inspect.TupleTest do
   test "basic" do
     assert inspect({1, "b", 3}) == "{1, \"b\", 3}"
     assert inspect({1, "b", 3}, [pretty: true, width: 1]) == "{1,\n \"b\",\n 3}"
+    assert inspect({1, "b", 3}, [pretty: true, mode: :expand]) == "{1,\n \"b\",\n 3}"
   end
 
   test "empty" do
@@ -176,6 +177,7 @@ defmodule Inspect.ListTest do
   test "basic" do
     assert inspect([ 1, "b", 3 ]) == "[1, \"b\", 3]"
     assert inspect([ 1, "b", 3 ], [pretty: true, width: 1]) == "[1,\n \"b\",\n 3]"
+    assert inspect([ 1, "b", 3 ], [pretty: true, mode: :expand]) == "[1,\n \"b\",\n 3]"
   end
 
   test "printable" do
@@ -190,6 +192,14 @@ defmodule Inspect.ListTest do
 
     assert inspect([foo: [1, 2, 3, :bar], bazzz: :bat], [pretty: true, width: 30]) ==
            "[foo: [1, 2, 3, :bar],\n bazzz: :bat]"
+    assert inspect([foo: [1, 2, 3, :bar], bazzz: :bat],
+                   [pretty: true, mode: :expand]) == String.rstrip("""
+           [foo: [1,
+             2,
+             3,
+             :bar],
+            bazzz: :bat]
+           """)
   end
 
   test "opt infer" do
@@ -246,6 +256,7 @@ defmodule Inspect.MapTest do
   test "basic" do
     assert inspect(%{1 => "b"}) == "%{1 => \"b\"}"
     assert inspect(%{1 => "b", 2 => "c"}, [pretty: true, width: 1]) == "%{1 => \"b\",\n  2 => \"c\"}"
+    assert inspect(%{1 => "b", 2 => "c"}, [pretty: true, mode: :expand]) == "%{1 => \"b\",\n  2 => \"c\"}"
   end
 
   test "keyword" do
